@@ -1,3 +1,6 @@
+# vim
+.vimrc
+
 # Directories
 cmake-build-debug/
 
