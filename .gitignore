@@ -12,7 +12,7 @@ cmake-build-debug/
 *.ko
 *.obj
 *.elf
-
+*.xml
 # Linker output
 *.ilk
 *.map

@@ -18,14 +18,14 @@ off_t find_size(int fd){
 void read_to_buff(int fd, char* buffer, off_t size){
     ssize_t rv = read(fd, buffer, size);
     if(rv == -1){
-        perror("Can't read a file!");
+        perror("Can't read a file!\n");
         return;
     }
 }
 
 void parse(const char buff[], uint32_t line, char buff_line[], off_t size){
     if(size <= 0){
-        perror("Invalid size of buffer!");
+        perror("Invalid size of buffer!\nй");
         return;
     }
     int count = 0;
