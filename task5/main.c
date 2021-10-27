@@ -1,64 +1,239 @@
+#include <stdio.h> //printf, errno
+#include <fcntl.h> //open
+#include <unistd.h> //read, lseek, close
+#include <stdlib.h> //malloc
+#include <errno.h> //errno
+#include <stdbool.h> //bool
+#include <string.h> //strchr
+#include <poll.h> //poll
 
-//#include <stdio.h>
-//#include <sys/fcntl.h>
-//#include <unistd.h>
-//#include <errno.h>
-//#include <string.h>
-//#include <stdlib.h>
-//
-//
-//off_t find_size(int fd){
-//    off_t size = lseek(fd, 0l, SEEK_END);
-//    if(size == -1){
-//        perror("Could not find the size of file!\n");
-//        return size;
-//    }
-//    lseek(fd, 0l, SEEK_SET);
-//    return size;
-//}
-//
-//void read_to_buff(int fd, char* buffer, off_t size){
-//    ssize_t rv = read(fd, buffer, size);
-//    if(rv == -1){
-//        perror("Can't read a file!\n");
-//        return;
-//    }
-//}
-//
-//void parse(const char buff[], uint32_t line, char buff_line[], off_t size){
-//    if(size <= 0){
-//        perror("Invalid size of buffer!\n");
-//        return;
-//    }
-//    int count = 0;
-//    for(off_t i = 0; i < size; i ++){
-//        if(buff[i] == '\n' || buff[i] == '\0'){
-//            count++;
-//        }
-//    }
-//    printf("%d", count);
-//}
-//
-//int main(int argc, char* argv[]) {
-//    printf("task5:\n");
-//
-//    if(argc <= 1){
-//        perror("Arguments count error\n"
-//               "Example: ./a.out filename.txt\n");
-//    }
-//    int fd = open(argv[1], O_RDONLY);
-//    if(fd == -1 ){
-//        perror("Could not open the file!\n");
-//        return fd;
-//    }
-//
-//    off_t size_of_file = find_size(fd);
-//    printf("Size of file: %lld bytes\n", size_of_file);
-//    char buff[BUFSIZ];
-//    read_to_buff(fd, buff, size_of_file);
-//    char line_buff[BUFSIZ];
-//    uint32_t line = 0;
-//    parse(buff, line, line_buff, size_of_file);
-//    close(fd);
-//    return 0;
-//}
+#define INC_COEF 1.5
+#define DEFAULT_CAPACITY 8
+
+typedef struct _IndentTable
+{
+	off_t* arr;
+	size_t size;
+	size_t cap;
+} IndentTable;
+
+
+void initIndentTable(IndentTable* table)
+{
+	errno = 0;
+
+	table->arr = calloc(DEFAULT_CAPACITY, sizeof(off_t));
+	if(table->arr == NULL)
+	{
+		perror("Cannot allocate memory for ident array");
+		return;
+	}
+
+	table->size = 0;
+	table->cap = DEFAULT_CAPACITY;
+}
+
+bool resizeTable(IndentTable* table)
+{
+	errno = 0;
+
+	off_t* oldArr = table->arr;
+	size_t oldCap = table->cap;
+
+	size_t newCap = oldCap * INC_COEF;
+
+	table->arr = realloc(table->arr, newCap * sizeof(off_t));
+	if (table->arr == NULL)
+	{
+		table->arr = oldArr;
+		perror("Cannot realloc memory");
+		return false;
+	}
+	table->cap = newCap;
+
+	return true;
+}
+
+bool pushIndent(IndentTable* table, off_t val)
+{
+	if(table->size == table->cap)
+	{
+		if(!resizeTable(table))
+		{
+			return false;
+		}
+	}
+
+	table->arr[table->size] = val;
+	++table->size;
+	return true;
+}
+
+#define BUFF_SIZE 16
+#define TIMEOUT 1000
+
+bool waitRead(int fildes, int timeout)
+{
+	struct pollfd fds = {
+			.fd = fildes,
+			.events = POLLIN,
+			.revents = 0
+	};
+
+	return poll(&fds, 1, timeout) == 1;
+}
+
+bool fillIndentTable(IndentTable* table, int fildes)
+{
+	errno = 0;
+
+	char buff[BUFF_SIZE + 1] = {0};
+	off_t currPos = 0;
+	ssize_t readCount = 0;
+
+	int oldFl = fcntl(fildes, F_GETFL);
+	int newFl = fcntl(fildes, F_SETFL, oldFl | O_NONBLOCK);
+
+	while((readCount = read(fildes, buff, BUFF_SIZE)) != 0)
+	{
+		if(readCount == -1)
+		{
+			if (errno == EINTR)
+			{
+				errno = 0;
+				perror("Signal caught in read");
+				continue;
+			}
+
+			if (errno == EAGAIN)
+			{
+				if (waitRead(fildes, TIMEOUT))
+				{
+					errno = 0;
+					continue;
+				}
+				else
+				{
+					perror("No data waiting to be read");
+					break;
+				}
+			}
+
+			perror("Error in reading file");
+			fcntl(fildes, F_SETFL, oldFl);
+			return false;
+		}
+
+		buff[readCount] = '\0';
+		char* endlinePos = buff;
+
+		while((endlinePos = strchr(endlinePos, '\n')) != NULL)
+		{
+			if(!pushIndent(table, currPos + (endlinePos - buff)))
+			{
+				fcntl(fildes, F_SETFL, oldFl);
+				return false;
+			}
+			++endlinePos;
+		}
+
+		currPos += readCount;
+	}
+
+	fcntl(fildes, F_SETFL, oldFl);
+	return true;
+}
+
+void printIndentTable(IndentTable* table)
+{
+	printf("{ ");
+	for(size_t i = 0; i < table->size; ++i)
+	{
+		printf("%lld, ", table->arr[i]);
+	}
+	printf(" }\n");
+}
+
+void destroyIndentTable(IndentTable* table)
+{
+	if(table->arr != NULL)
+	{
+		free(table->arr);
+	}
+}
+
+bool printLine(int fildes, IndentTable* table, int lineNum)
+{
+	errno = 0;
+
+	--lineNum;
+
+	if(lineNum < 0 || lineNum >= table->size)
+	{
+		printf("No line with such number\n");
+		return false;
+	}
+
+	off_t beginPos =  lineNum == 0
+		  	? 0
+			: table->arr[lineNum-1] + 1; //+1 to get next pos after '\n'
+	off_t length = table->arr[lineNum] - beginPos  + 1; //+1 to include '\n'
+
+	char* line = calloc(length + 1, sizeof(char));
+	if(line == NULL)
+	{
+		perror("Cannot allocate memory to printLine buffer");
+		return false;
+	}
+
+
+	lseek(fildes, beginPos, SEEK_SET);
+	read(fildes, line, length);
+
+	printf("%s", line);
+	free(line);
+
+	return true;
+}
+
+int main(int argc, char* argv[])
+{
+    if(argc < 2){
+        perror("2 or less args");
+        return -1;
+    }
+
+	errno = 0;
+
+	int fildes = open(argv[1], O_RDONLY);
+
+	if(fildes == -1)
+	{
+		perror("Cannot open file");
+		return -1;
+	}
+
+
+	IndentTable table;
+	initIndentTable(&table);
+
+	fillIndentTable(&table, fildes);
+
+	off_t lineNum;
+	while(1)
+	{
+		printf("Type line num to read. Type 0 to exit: ");
+		scanf("%lld", &lineNum);
+
+		if(lineNum == 0)
+		{
+			break;
+		}
+
+		printLine(fildes, &table, lineNum);
+	}
+
+	destroyIndentTable(&table);
+
+	return 0;
+}
