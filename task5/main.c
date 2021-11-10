@@ -25,7 +25,7 @@ void initIndentTable(IndentTable* table)
 	table->arr = calloc(DEFAULT_CAPACITY, sizeof(off_t));
 	if(table->arr == NULL)
 	{
-		perror("Cannot allocate memory for ident array");
+		perror("Cannot allocate memory for ident array\n");
 		return;
 	}
 
@@ -46,7 +46,7 @@ bool resizeTable(IndentTable* table)
 	if (table->arr == NULL)
 	{
 		table->arr = oldArr;
-		perror("Cannot realloc memory");
+		perror("Cannot realloc memory\n");
 		return false;
 	}
 	table->cap = newCap;
@@ -92,7 +92,6 @@ bool fillIndentTable(IndentTable* table, int fildes)
 	ssize_t readCount = 0;
 
 	int oldFl = fcntl(fildes, F_GETFL);
-	int newFl = fcntl(fildes, F_SETFL, oldFl | O_NONBLOCK);
 
 	while((readCount = read(fildes, buff, BUFF_SIZE)) != 0)
 	{
@@ -101,7 +100,7 @@ bool fillIndentTable(IndentTable* table, int fildes)
 			if (errno == EINTR)
 			{
 				errno = 0;
-				perror("Signal caught in read");
+				perror("Signal caught in read\n");
 				continue;
 			}
 
@@ -114,12 +113,12 @@ bool fillIndentTable(IndentTable* table, int fildes)
 				}
 				else
 				{
-					perror("No data waiting to be read");
+					perror("No data waiting to be read\n");
 					break;
 				}
 			}
 
-			perror("Error in reading file");
+			perror("Error in reading file\n");
 			fcntl(fildes, F_SETFL, oldFl);
 			return false;
 		}
@@ -182,7 +181,7 @@ bool printLine(int fildes, IndentTable* table, int lineNum)
 	char* line = calloc(length + 1, sizeof(char));
 	if(line == NULL)
 	{
-		perror("Cannot allocate memory to printLine buffer");
+		perror("Cannot allocate memory to printLine buffer\n");
 		return false;
 	}
 
@@ -199,7 +198,8 @@ bool printLine(int fildes, IndentTable* table, int lineNum)
 int main(int argc, char* argv[])
 {
     if(argc < 2){
-        perror("2 or less args");
+        perror("Not enough arguments\n"
+               "Example: ./a.out test.txt\n");
         return -1;
     }
 
@@ -209,7 +209,7 @@ int main(int argc, char* argv[])
 
 	if(fildes == -1)
 	{
-		perror("Cannot open file");
+		perror("Cannot open file\n");
 		return -1;
 	}
 
@@ -234,6 +234,23 @@ int main(int argc, char* argv[])
 	}
 
 	destroyIndentTable(&table);
+
+    while(1)
+    {
+        if(close(fildes) == -1)
+        {
+            if (errno == EINTR)
+            {
+                perror("Signal caught\n");
+                errno = 0;
+                continue;
+            }
+
+            perror("Close fail\n");
+            break;
+        } else
+            break;
+    }
 
 	return 0;
 }
