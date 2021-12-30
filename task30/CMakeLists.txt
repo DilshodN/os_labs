@@ -3,4 +3,4 @@ project(task30 C)
 
 set(CMAKE_C_STANDARD 11)
 
-add_executable(task30 client.c server.c)
+add_executable(task30 ../task31/client.c server.c)

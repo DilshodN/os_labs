@@ -42,16 +42,16 @@ int main()
 
     count = fread(buff, sizeof(char), BUFSIZ, in);
     if(ferror(in)){
-        perror("Error in reading from pipe");
+        perror("Error in reading from pipe\n");
         if(pclose(in) == -1) {
-            perror("Error in closing pipe");
+            perror("Error in closing pipe\n");
         }
         return 1;
     }
 
 	int stat = pclose(in);
 	if(stat == -1){
-		perror("Error in closing pipe");
+		perror("Error in closing pipe\n");
 		return -1;
 	}else if(!WIFEXITED(stat)){
 		printStat(stat);
